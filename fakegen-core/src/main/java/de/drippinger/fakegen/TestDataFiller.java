@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import static de.drippinger.fakegen.exception.ExceptionHelper.createExceptionMessage;
 import static de.drippinger.fakegen.util.ReflectionUtils.*;
@@ -52,10 +53,10 @@ public class TestDataFiller {
     }
 
     public <T> T createRandomFilledInstanceAndApply(Class<T> clazz, Consumer<T> consumer) {
-        T randomFilledInstance = createRandomFilledInstanceInternal(clazz, 0);
-        consumer.accept(randomFilledInstance);
-
-        return randomFilledInstance;
+        return Stream.of(createRandomFilledInstanceInternal(clazz, 0))
+                .peek(consumer)
+                .findAny()
+                .orElse(null);
     }
 
     public <T> T createRandomFilledInstance(Class<T> clazz) {
@@ -187,12 +188,9 @@ public class TestDataFiller {
     }
 
     private Optional<Constructor> extractPlainConstructor(Class clazz) {
-        for (Constructor<?> constructor : clazz.getConstructors()) {
-            if (constructor.getParameterCount() == 0) {
-                return Optional.of(constructor);
-            }
-        }
-        return Optional.empty();
+        return Arrays.stream(clazz.getConstructors())
+                .filter(c -> c.getParameterCount() == 0)
+                .findAny();
     }
 
 }
