@@ -1,21 +1,30 @@
 package de.drippinger.fakegen;
 
+import static de.drippinger.fakegen.exception.ExceptionHelper.createExceptionMessage;
+import static de.drippinger.fakegen.util.ReflectionUtils.getAllFields;
+import static de.drippinger.fakegen.util.ReflectionUtils.getPotentialRandomFactoryMethods;
+import static de.drippinger.fakegen.util.ReflectionUtils.isAbstractClass;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+
 import de.drippinger.fakegen.domain.DomainConfiguration;
 import de.drippinger.fakegen.exception.FakegenException;
 import de.drippinger.fakegen.filler.BasicObjectFiller;
 import de.drippinger.fakegen.filler.ObjectFiller;
 import de.drippinger.fakegen.uninstanciable.DynamicClassGenerator;
 import de.drippinger.fakegen.util.ReflectionUtils;
+import io.vavr.CheckedFunction1;
+import io.vavr.control.Try;
 import lombok.SneakyThrows;
-
-import java.lang.reflect.*;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Consumer;
-
-import static de.drippinger.fakegen.exception.ExceptionHelper.createExceptionMessage;
-import static de.drippinger.fakegen.util.ReflectionUtils.*;
 
 /**
  * @author Dennis Rippinger
@@ -62,32 +71,24 @@ public class TestDataFiller {
         return createRandomFilledInstanceInternal(clazz, 0);
     }
 
-
+    @SneakyThrows
     public <T> T createRandomFilledByFactory(Class<T> clazz) {
-        try {
+        Optional<Method> possibleFactoryMethod = Arrays.stream(clazz.getMethods())
+                .filter(ReflectionUtils::isStaticMethod)
+                .filter(method -> method.getReturnType().equals(clazz))
+                .filter(method -> Arrays.stream(method.getParameterTypes()).noneMatch(clazz::equals))
+                .findFirst();
 
-            Optional<Method> possibleFactoryMethod = Arrays.stream(clazz.getMethods())
-                    .filter(ReflectionUtils::isStaticMethod)
-                    .filter(method -> method.getReturnType().equals(clazz))
-                    .filter(method -> !Arrays.stream(method.getParameterTypes()).anyMatch(clazz::equals))
-                    .findFirst();
+        Object[] objects = possibleFactoryMethod
+                .map(Method::getParameterTypes)
+                .map(Stream::of).orElseGet(Stream::empty)
+                .map(this::createRandomFilledInstance)
+                .toArray();
 
-            if (possibleFactoryMethod.isPresent()) {
-                Method method = possibleFactoryMethod.get();
-
-                Object[] instances = Arrays.stream(method.getParameterTypes())
-                        .map(this::createRandomFilledInstance)
-                        .toArray();
-
-                return (T) method.invoke(null, instances);
-            }
-
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new FakegenException("Could not invoke factory method", e);
-        }
-
-        return null;
-
+        return possibleFactoryMethod
+                .map(CheckedFunction1.liftTry(m -> (T) m.invoke(null, objects)))
+                .map(Try::get)
+                .orElse(null);
     }
 
     public <T> T createRandomFilledByFactory(Class<T> clazz, MethodHolder methodHolder) {
