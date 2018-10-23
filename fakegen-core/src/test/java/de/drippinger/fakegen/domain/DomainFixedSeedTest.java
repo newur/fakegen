@@ -36,4 +36,27 @@ class DomainFixedSeedTest {
         }
     }
 
+    @RepeatedTest(3)
+    @DisplayName("Should use Domain Specific Configuration with static seed (fluent)")
+    void should_Use_Domain_Specific_Values_fluent() {
+        TestDataFiller tdf = new TestDataFiller(123L, new TestConfigurationFluent());
+
+        SimpleType randomFilledInstance = tdf.createRandomFilledInstance(SimpleType.class);
+
+        assertThat(randomFilledInstance.getName()).isEqualTo("Jayne");
+    }
+
+    private class TestConfigurationFluent extends DomainConfiguration {
+
+        @Override
+        public void init(Random random) {
+            Faker faker = new Faker(random);
+
+            DomainConfigurator.newConfigurator(this)
+                    .forField("name")
+                    .ofType(String.class)
+                    .use(() -> faker.name().firstName());
+        }
+    }
+
 }
